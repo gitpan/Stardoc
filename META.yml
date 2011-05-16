@@ -21,9 +21,9 @@ no_index:
 requires:
   IO::All: 0
   Mouse: 0
-  Template::Toolkit::Simple: 0
+  Template::Toolkit::Simple: 0.12
   YAML::XS: 0
   perl: 5.8.3
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.03
+version: 0.04
