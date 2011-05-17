@@ -12,10 +12,15 @@ In Makefile.PL:
 
     stardoc_make_pod;
     all_from 'lib/Foo.pm';
+    stardoc_clean_pod;
 
 =head1 DESCRIPTION
 
-This command generates a pod file from every .pm file in your lib/ directory that contains Stardoc documentation.
+The C<stardoc_make_pod> command generates a pod file from every .pm file in
+your lib/ directory that contains Stardoc documentation.
+
+The C<stardoc_clean_pod> command tells C<make clean> to remove the generated
+pod files.
 
 =head1 AUTHOR
 
