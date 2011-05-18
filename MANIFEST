@@ -8,7 +8,7 @@ inc/Module/Install/Metadata.pm
 inc/Module/Install/Package.pm
 inc/Module/Install/Win32.pm
 inc/Module/Install/WriteAll.pm
-inc/Package.pm
+inc/Module/Package.pm
 lib/Module/Install/Stardoc.pm
 lib/Module/Install/Stardoc.pod
 lib/Stardoc.pm
