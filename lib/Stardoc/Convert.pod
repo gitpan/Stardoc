@@ -1,5 +1,9 @@
 =encoding utf8
 
+=head1 NAME
+
+Stardoc::Convert - Convert Stardoc Perl modules to pod
+
 =head1 AUTHOR
 
 Ingy döt Net <ingy@cpan.org>

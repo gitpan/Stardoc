@@ -1,93 +1,183 @@
 #line 1
 ##
 # name:      Module::Install::Package
-# abstract:  Package Support for Module::Install
+# abstract:  Module::Install support for Module::Package
 # author:    Ingy döt Net <ingy@cpan.org>
-# copyright: 2011
 # license:   perl
+# copyright: 2011
 
+# This module contains the Module::Package logic that must be available to
+# both the Author and the End User. Author-only logic goes in a
+# Module::Package::Plugin subclass.
 package Module::Install::Package;
 use strict;
+use Module::Install::Base;
+use vars qw'@ISA $VERSION';
+@ISA = 'Module::Install::Base';
+$VERSION = '0.12';
 
-# use base 'Module::Install::Base';
-use Module::Install::Base; use vars qw(@ISA); BEGIN { @ISA = 'Module::Install::Base' }
-
-use File::Find;
-
-my $plugins_file = 'pkg/plugins.pl';
-my $makefile = 'pkg/makefile.pl';
-
-# If a Makefile.PL calls 'pkg', save $self, and wait until the END.
-my $SELF;
-sub pkg {
-    my ($self) = ($SELF) = @_;
+#-----------------------------------------------------------------------------#
+# We allow the author to specify key/value options after the plugin. These
+# options need to be available both at author time and install time.
+#-----------------------------------------------------------------------------#
+# We won't use any non-core modules like Moo, here. (This runs on user side)
+# Generate an accessor for command line options:
+sub package_options {
+    my $self = shift;
+    return ($self->{package_options} = shift) if @_;
+    return $self->{package_options};
 }
 
+my $default_options = {
+    deps_list => 1,
+    install_bin => 1,
+    manifest_skip => 1,
+};
+
+#-----------------------------------------------------------------------------#
+# Module::Install plugin directives. Use long, ugly names to not pollute the
+# Module::Install plugin namespace. These are only intended to be called from
+# Module::Package.
+#-----------------------------------------------------------------------------#
+
+# Module::Package starts off life as a normal call to this Module::Install
+# plugin directive:
+my $module_install_plugin;
+my $module_package_plugin;
+# XXX This @argv thing is a temporary fix for an ugly bug somewhere in the
+# Wikitext module usage.
+my @argv;
+sub module_package_internals_init {
+    my $self = $module_install_plugin = shift;
+    my ($plugin_spec, %options) = @_;
+    $self->package_options({%$default_options, %options});
+
+    if ($module_install_plugin->is_admin) {
+        $module_package_plugin = $self->_load_plugin($plugin_spec);
+        $module_package_plugin->_version_check($VERSION);
+        $module_package_plugin->mi($module_install_plugin);
+    }
+    # NOTE - This is the point in time where the body of Makefile.PL runs...
+    return;
+
+    sub INIT {
+        return unless $module_install_plugin;
+        return if $Module::Package::ERROR;
+        eval {
+            if ($module_install_plugin->is_admin) {
+                $module_package_plugin->initial;
+                $module_package_plugin->main;
+            }
+            else {
+                $module_install_plugin->_initial();
+                $module_install_plugin->_main();
+            }
+        };
+        if ($@) {
+            $Module::Package::ERROR = $@;
+            die $@;
+        }
+        @argv = @ARGV; # XXX
+    }
+
+    # If this Module::Install plugin was used (by Module::Package) then wrap
+    # up any loose ends. This will get called after Makefile.PL has completed.
+    sub END {
+        @ARGV = @argv; # XXX
+        return unless $module_install_plugin;
+        return if $Module::Package::ERROR;
+        $module_package_plugin
+            ? $module_package_plugin->final
+            : $module_install_plugin->_final;
+    }
+}
+
+# Module::Package, Module::Install::Package and Module::Package::Plugin
+# must all have the same version. Seems wise.
+sub module_package_internals_version_check {
+    my ($self, $version) = @_;
+    die <<"..." unless $version == $VERSION;
+
+Error! Something has gone awry:
+    Module::Package version=$version is using 
+    Module::Install::Package version=$VERSION
+If you are the author of this module, try upgrading Module::Package.
+Otherwise, please notify the author of this error.
+
+...
+}
+
+# Find and load the author side plugin:
+sub _load_plugin {
+    my ($self, $spec) = @_;
+    my $version = '';
+    if ($spec =~ s/\s+(\S+)\s*//) {
+        $version = $1;
+    }
+    my ($module, $plugin) =
+        not(defined $spec) ? ('Plugin', "Plugin::basic") :
+        ($spec =~ /^\w(\w|::)*$/) ? ($spec, $spec) :
+        ($spec =~ /^:(\w+)$/) ? ('Plugin', "Plugin::$1") :
+        ($spec =~ /^(\S*\w):(\w+)$/) ? ($1, "$1::$2") :
+        die "$spec is invalid";
+    $module = "Module::Package::$module";
+    $plugin = "Module::Package::$plugin";
+    eval "use $module $version (); 1" or die $@;
+    return $plugin->new();
+}
+
+#-----------------------------------------------------------------------------#
+# These are the user side analogs to the author side plugin API calls.
+# Prefix with '_' to not pollute Module::Install plugin space.
+#-----------------------------------------------------------------------------#
+sub _initial {
+    my ($self) = @_;
+    $self->_guess_pm;
+}
+
+sub _main {
+    my ($self) = @_;
+}
+
+# TODO Need to review this critical part. Make sure it is in parity with every
+# author side run!
+sub _final {
+    my ($self) = @_;
+    $self->all_from($main::PM)
+        unless $self->name;
+    $self->requires_from($main::PM);
+    $self->_install_bin;
+    $self->WriteAll;
+}
+
+#-----------------------------------------------------------------------------#
+# This section is where all the useful code bits go. These bits are needed by
+# both Author and User side runs.
+#-----------------------------------------------------------------------------#
 # Take a guess at the primary .pm and .pod files for 'all_from', and friends.
 # Put them in global vars in the main:: namespace.
-BEGIN {
-    package main;
-    use vars qw($PM $POD);
-    $PM = '';
-    my $high = 999999;
-    File::Find::find(sub {
-        return unless /\.pm$/;
-        my $name = $File::Find::name;
-        my $num = ($name =~ s!/+!/!g);
-        if ($num < $high) {
-            $high = $num;
-            $PM = $name;
-            ($POD = $PM) =~ s/\.pm/.pod/ or die;
-        }
-    }, 'lib');
-}
-
-# Run author commands from pkg/makefile.pl.
-# Run other basics.
-sub END {
-    # If $SELF is not set, this module was not actually called for.
-    return unless $SELF;
-
-    $SELF->_install_bin;
-
-    if ($SELF->is_admin and -e $makefile) {
-        require $plugins_file if -e $plugins_file;
-        open MF, $makefile or die;
-        my $mf = do { local $/; <MF> };
-        eval "package main; $mf; 1" or die $@;
-
-        $SELF->clean_files('MANIFEST MANIFEST.SKIP');
+sub _guess_pm {
+    if (not $main::PM) {
+        require File::Find;
+        $main::PM = '';
+        my $high = 999999;
+        File::Find::find(sub {
+            return unless /\.pm$/;
+            my $name = $File::Find::name;
+            my $num = ($name =~ s!/+!/!g);
+            if ($num < $high) {
+                $high = $num;
+                $main::PM = $name;
+            }
+        }, 'lib');
     }
-
-    $SELF->all_from($main::PM)
-        unless $SELF->name;
-    $SELF->WriteAll;
-
-    # We generate a MANIFEST.SKIP and add things to it.
-    # We add pkg/, because that should only contain author stuff.
-    # We add author only M::I plugins, so they don't get distributed.
-    if ($SELF->is_admin) {
-        eval "use Module::Install::ManifestSkip; 1" or die $@;
-        $SELF->manifest_skip;
-
-        open MS, '>>', 'MANIFEST.SKIP' or die;
-        # XXX Hardcoded author list for now. Need to change this.
-        print MS <<'...';
-^pkg/
-^inc/Module/Install/AckXXX.pm$
-^inc/Module/Install/ManifestSkip.pm$
-^inc/Module/Install/ReadmeFromPod.pm$
-^inc/Module/Install/Stardoc.pm$
-^inc/Module/Install/VersionCheck.pm$
-...
-        close MS;
-
-        $SELF->_write_plugins_file;
-    }
+    (my $pod = $main::PM) =~ s/\.pm/.pod/ or die;
+    $main::POD = -e $pod ? $pod : '';
 }
 
 sub _install_bin {
     my ($self) = @_;
+    return unless $self->package_options->{install_bin};
     return unless -d 'bin';
     my @bin;
     File::Find::find(sub {
@@ -95,35 +185,6 @@ sub _install_bin {
         push @bin, $File::Find::name;
     }, 'bin');
     $self->install_script($_) for @bin;
-}
-
-sub _write_plugins_file {
-    my ($self) = @_;
-    return unless -d 'pkg';
-    my @inc;
-    File::Find::find(sub {
-        return unless -f $_ and $_ =~ /\.pm$/;
-        push @inc, $File::Find::name;
-    }, 'inc');
-    open PF, '>', $plugins_file or die;
-    print PF <<'...';
-# This file gets loaded when an author runs Makefile.PL.
-# It is intended to let a new author know which which plugins are required.
-# This file was generated by Module::Install::Package.
-# See the doc for that module for more information.
-...
-    print PF join '', map {
-        my $INC = $_;
-        $INC =~ s!^inc[\/\\]!!;
-        $INC =~ s!\\!/!g;
-        s!inc[\/\\](.*)\.pm$!$1!;
-        s!/+!::!g;
-        m!^(Package)$!
-            ? ''
-            : "require $_\n    unless \$INC{'$INC'};\n";
-    } sort @inc;
-    print PF "1;\n";
-    close PF;
 }
 
 1;
