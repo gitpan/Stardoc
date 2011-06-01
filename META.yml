@@ -20,10 +20,10 @@ no_index:
     - t
 requires:
   IO::All: 0.41
-  Mouse: 0.92
+  Mouse: 0.93
   Template::Toolkit::Simple: 0.13
   YAML::XS: 0.35
   perl: 5.8.3
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.15
+version: 0.16

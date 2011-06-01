@@ -16,10 +16,10 @@ use strict;
 use Module::Install::Base;
 use vars qw'@ISA $VERSION';
 @ISA = 'Module::Install::Base';
-$VERSION = '0.16';
+$VERSION = '0.19';
 
 #-----------------------------------------------------------------------------#
-# XXX CRAZY HACK!!
+# XXX BOOTBUGHACK
 # This is here to try to get us out of Module-Package-0.11 cpantesters hell...
 # Remove this when the situation has blown over.
 sub pkg {
@@ -53,7 +53,7 @@ my $default_options = {
 # plugin directive:
 my $module_install_plugin;
 my $module_package_plugin;
-# XXX This @argv thing is a temporary fix for an ugly bug somewhere in the
+# XXX ARGVHACK This @argv thing is a temporary fix for an ugly bug somewhere in the
 # Wikitext module usage.
 my @argv;
 sub module_package_internals_init {
@@ -86,13 +86,13 @@ sub module_package_internals_init {
             $Module::Package::ERROR = $@;
             die $@;
         }
-        @argv = @ARGV; # XXX
+        @argv = @ARGV; # XXX ARGVHACK
     }
 
     # If this Module::Install plugin was used (by Module::Package) then wrap
     # up any loose ends. This will get called after Makefile.PL has completed.
     sub END {
-        @ARGV = @argv; # XXX
+        @ARGV = @argv; # XXX ARGVHACK
         return unless $module_install_plugin;
         return if $Module::Package::ERROR;
         $module_package_plugin
@@ -108,6 +108,7 @@ sub module_package_internals_init {
 # must all have the same version. Seems wise.
 sub module_package_internals_version_check {
     my ($self, $version) = @_;
+    return if $version < 0.1800001;   # XXX BOOTBUGHACK!!
     die <<"..." unless $version == $VERSION;
 
 Error! Something has gone awry:
@@ -146,7 +147,6 @@ sub _load_plugin {
 #-----------------------------------------------------------------------------#
 sub _initial {
     my ($self) = @_;
-    $self->_guess_pm;
 }
 
 sub _main {
