@@ -25,6 +25,7 @@ requires:
   YAML::XS: 0.35
   perl: 5.8.3
 resources:
+  homepage: http://github.com/ingydotnet/stardoc-pm/tree
   license: http://dev.perl.org/licenses/
   repository: git://github.com/ingydotnet/stardoc-pm.git
-version: 0.17
+version: 0.18
